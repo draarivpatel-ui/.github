@@ -1,0 +1,58 @@
+# Reusable CodeQL scan. Picks the languages from the files in the repo,
+# always scans the workflows themselves, and uploads to code scanning.
+name: CodeQL (reusable)
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  languages:
+    name: Find languages
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.find.outputs.list }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: find
+        env:
+          PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          if [ "$PRIVATE" = "true" ]; then
+            # Code scanning on a private repo needs GitHub Advanced Security.
+            echo "list=[]" >> "$GITHUB_OUTPUT"
+            echo "CodeQL skipped: private repo without Advanced Security" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          langs='"actions"'
+          files=$(git ls-files)
+          if echo "$files" | grep -qE '\.(js|jsx|mjs|cjs|ts|tsx|mts|cts|vue|svelte)$'; then langs="$langs,\"javascript-typescript\""; fi
+          if echo "$files" | grep -qE '\.py$'; then langs="$langs,\"python\""; fi
+          echo "list=[$langs]" >> "$GITHUB_OUTPUT"
+          echo "CodeQL languages: [$langs]" >> "$GITHUB_STEP_SUMMARY"
+
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    needs: languages
+    if: needs.languages.outputs.list != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.languages.outputs.list) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}
