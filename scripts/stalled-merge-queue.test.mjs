@@ -35,6 +35,13 @@ test("stalledQueue returns nothing while a batch run is queued or in progress", 
 	}
 });
 
+for (const status of ["requested", "waiting", "pending"]) {
+	test(`stalledQueue leaves the queue alone while a merge group run is ${status}`, () => {
+		const runs = [mergeGroupRun(101, status, "2026-11-22T08:06:00Z"), ...INCIDENT_RUNS];
+		assert.equal(stalledQueue({ entries: INCIDENT_ENTRIES, runs, now: NOW }), null);
+	});
+}
+
 test("stalledQueue returns nothing for an empty queue", () => {
 	assert.equal(stalledQueue({ entries: [], runs: INCIDENT_RUNS, now: NOW }), null);
 	assert.equal(stalledQueue({ entries: [], runs: [], now: NOW }), null);
