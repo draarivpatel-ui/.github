@@ -8,7 +8,7 @@
 //   node scripts/stalled-merge-queue.mjs --repo <owner/name> [--stale-minutes <n>] [--dry-run]
 //
 // A queue is stalled when it has entries, none of them has a headCommit (no batch is being built for any of them), no
-// merge_group run is queued or in progress, and the newest merge_group run is older than 30 minutes (--stale-minutes). The head entry
+// merge_group run is active, and the newest merge_group run is older than 30 minutes (--stale-minutes). The head entry
 // (lowest position) is then fixed according to its PR's mergeable state:
 //
 //   - CONFLICTING: dequeue it and comment on the PR asking for a rebase. Never re-queue it: it would stall again.
@@ -21,6 +21,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 export const STALE_MS = 30 * 60 * 1000;
+const ACTIVE_RUN_STATUSES = new Set(["queued", "in_progress", "requested", "waiting", "pending"]);
 
 // The stalled queue's head entry (lowest position), or null when the queue is healthy. Pure: entries and runs are
 // plain objects as read from the API, now is epoch millis.
@@ -28,7 +29,7 @@ export function stalledQueue({ entries, runs, now, staleMs = STALE_MS }) {
 	if (!entries || entries.length === 0) return null;
 	if (entries.some((entry) => entry.headCommit)) return null;
 	const mergeGroupRuns = (runs ?? []).filter((run) => run.event === "merge_group");
-	const active = mergeGroupRuns.some((run) => run.status === "queued" || run.status === "in_progress");
+	const active = mergeGroupRuns.some((run) => ACTIVE_RUN_STATUSES.has(run.status));
 	if (active) return null;
 	const newest = mergeGroupRuns.reduce((a, b) => (!a || Date.parse(b.updatedAt) > Date.parse(a.updatedAt) ? b : a), null);
 	if (newest && now - Date.parse(newest.updatedAt) < staleMs) return null;
